@@ -7,8 +7,11 @@ TICKER_A = "GROWWSLVR.NS"
 TICKER_B = "SILVERIETF.NS"
 THRESHOLD = 5.0  # absolute threshold
 
-BOT_TOKEN = "8358559850:AAHMZPYuvgdI17OaK9sLgEmYG-8dPHI2_IQ"
-CHAT_ID = "8418285542"
+import os
+
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
+
 
 
 def send_telegram(text: str):
