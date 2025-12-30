@@ -5,7 +5,7 @@ from datetime import datetime
 # ---- CONFIG ----
 TICKER_A = "GROWWSLVR.NS"
 TICKER_B = "SILVERIETF.NS"
-THRESHOLD = 0.01  # absolute threshold
+THRESHOLD = 5.0  # absolute threshold
 
 import os
 
