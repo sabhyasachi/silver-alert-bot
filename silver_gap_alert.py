@@ -10,7 +10,7 @@ TICKER_A = "GROWWSLVR.NS"
 TICKER_B = "SILVERIETF.NS"
 
 THRESHOLD = 5.0          # ₹ (ETF vs ETF) absolute threshold
-MCX_THRESHOLD = 10.0     # ₹ (per gram) absolute threshold for (MCX/1000) vs GROWWSLVR
+MCX_THRESHOLD = 30.0     # ₹ (per gram) absolute threshold for (MCX/1000) vs GROWWSLVR
 
 # MCX Silver Micro (27-Feb-2026) quote page (₹ per KGS)
 MCX_SILVERMIC_URL = "https://www.indiainfoline.com/commodity/mcxfut/silvermic/27-feb-2026"
