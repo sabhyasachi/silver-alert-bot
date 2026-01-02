@@ -2,7 +2,7 @@ name: Silver ETF Gap Alert
 
 on:
   schedule:
-    - cron: "*/2 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
