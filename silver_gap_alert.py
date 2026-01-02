@@ -8,8 +8,8 @@ from datetime import datetime
 TICKER_A = "GROWWSLVR.NS"
 TICKER_B = "SILVERIETF.NS"
 
-THRESHOLD_ETF = .01        # condition-1: abs(A-B) > 5
-MAX_DIFF_TO_MCX = 50.0     # condition-2: abs(A - MCX_per_gram) < 30
+THRESHOLD_ETF = 5.0        # condition-1: abs(A-B) > 5
+MAX_DIFF_TO_MCX = 15.0     # condition-2: abs(A - MCX_per_gram) < 30
 
 GROWW_MCX_URL = "https://groww.in/commodities/futures/mcx_silvermic"
 # Benchmark inputs (machine-readable, no JS scraping)
