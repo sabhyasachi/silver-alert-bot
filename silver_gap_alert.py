@@ -1,38 +1,57 @@
-```python
+
 import os
-import re
 import requests
 import yfinance as yf
 from datetime import datetime
 
-# ---- CONFIG ----
+# ---------------- CONFIG ----------------
 TICKER_A = "GROWWSLVR.NS"
 TICKER_B = "SILVERIETF.NS"
 
-THRESHOLD = 1.0          # ₹ (ETF vs ETF) absolute threshold
-MCX_THRESHOLD = 30.0     # ₹ (per gram) absolute threshold for (MCX/1000) vs GROWWSLVR
+THRESHOLD = 0.01          # ₹ absolute threshold for ETF-vs-ETF difference
+RATIO_THRESHOLD = 0.02    # 2% max difference in normalized ratios (benchmark sanity check)
 
-# MCX Silver Micro (27-Feb-2026) quote page (₹ per KGS)
-MCX_SILVERMIC_URL = "https://www.indiainfoline.com/commodity/mcxfut/silvermic/27-feb-2026"
+# Benchmark inputs (machine-readable, no JS scraping)
+SILVER_FUTURES = "SI=F"   # Silver futures (USD per troy ounce)
+USDINR = "USDINR=X"       # USD/INR FX rate
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
 
 
-def send_telegram(text: str):
+TROY_OUNCE_G = 31.1034768  # grams in 1 troy ounce
+
+
+# ---------------- HELPERS ----------------
+def send_telegram(text: str) -> None:
+    """
+    Sends Telegram message if BOT_TOKEN is set.
+    If BOT_TOKEN is empty, prints the message instead (so code still "works").
+    """
+    if not BOT_TOKEN:
+        print("\n--- BOT_TOKEN empty: would send Telegram message below ---")
+        print(text)
+        print("--- end message ---\n")
+        return
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     r = requests.post(url, json={"chat_id": CHAT_ID, "text": text}, timeout=20)
     r.raise_for_status()
 
 
 def last_price(ticker: str) -> float:
+    """
+    Robust last price fetch using yfinance:
+    - try fast_info["last_price"]
+    - fallback to last close from 1m interval data
+    """
     t = yf.Ticker(ticker)
 
     price = None
     try:
         price = t.fast_info.get("last_price")
     except Exception:
-        pass
+        price = None
 
     if price is None:
         hist = t.history(period="1d", interval="1m")
@@ -43,54 +62,51 @@ def last_price(ticker: str) -> float:
     return float(price)
 
 
-def mcx_silvermic_feb27_price_kg() -> float:
+def silver_benchmark_inr_per_gm() -> float:
     """
-    Fetch MCX SILVERMIC 27-Feb-2026 last traded price from IndiaInfoline page.
-    Returns price in ₹ per kg.
+    Benchmark silver price in INR per gram:
+      (SI=F USD/oz * USDINR INR/USD) / 31.1034768 g/oz
     """
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    }
-    r = requests.get(MCX_SILVERMIC_URL, headers=headers, timeout=20)
-    r.raise_for_status()
-    html = r.text
+    silver_usd_per_oz = last_price(SILVER_FUTURES)
+    usdinr = last_price(USDINR)
 
-    # The page contains a line like: "Last Traded Price 2,36,058"
-    m = re.search(r"Last\s+Traded\s+Price\s*([0-9,]+(?:\.[0-9]+)?)", html, re.IGNORECASE)
-    if not m:
-        raise RuntimeError("Could not parse MCX Silver Micro LTP from IndiaInfoline page")
-
-    val = m.group(1).replace(",", "")
-    return float(val)
+    inr_per_gm = (silver_usd_per_oz * usdinr) / TROY_OUNCE_G
+    return float(inr_per_gm)
 
 
+# ---------------- MAIN ----------------
 def main():
     groww = last_price(TICKER_A)
     silver_etf = last_price(TICKER_B)
     etf_diff = groww - silver_etf
 
-    mcx_kg = mcx_silvermic_feb27_price_kg()
-    mcx_per_gm = mcx_kg / 1000.0
-    mcx_diff = groww - mcx_per_gm
+    bench_gm = silver_benchmark_inr_per_gm()
 
-    print(
-        "GROWWSLVR:", groww,
-        "SILVERIETF:", silver_etf,
-        "ETF diff:", etf_diff,
-        "MCX SILVERMIC (₹/kg):", mcx_kg,
-        "MCX/1000 (₹/gm):", mcx_per_gm,
-        "GROWW - (MCX/1000):", mcx_diff,
-        "ETF threshold:", THRESHOLD,
-        "MCX threshold:", MCX_THRESHOLD,
-    )
+    # Unit-consistent validation:
+    # Normalize both ETFs by the same benchmark (dimensionless ratios)
+    groww_ratio = groww / bench_gm
+    silver_ratio = silver_etf / bench_gm
+    ratio_diff = abs(groww_ratio - silver_ratio)
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # ✅ Alert only if:
+    # Debug print (always)
+    print(
+        "GROWWSLVR:", round(groww, 4),
+        "SILVERIETF:", round(silver_etf, 4),
+        "ETF diff:", round(etf_diff, 6),
+        "Benchmark (INR/gm):", round(bench_gm, 6),
+        "GROWW ratio:", round(groww_ratio, 6),
+        "SILVER ratio:", round(silver_ratio, 6),
+        "Ratio diff:", round(ratio_diff, 6),
+        "ETF threshold:", THRESHOLD,
+        "Ratio threshold:", RATIO_THRESHOLD,
+    )
+
+    # Alert only if:
     # 1) ETF-vs-ETF gap is big enough, AND
-    # 2) GROWW is within ₹10 of (MCX Silver Micro Feb27 / 1000)
-    if abs(etf_diff) > THRESHOLD and abs(mcx_diff) < MCX_THRESHOLD:
+    # 2) Both ETFs are behaving consistently vs benchmark (sanity check)
+    if abs(etf_diff) > THRESHOLD and ratio_diff < RATIO_THRESHOLD:
         direction = (
             "GROWWSLVR higher than SILVERIETF"
             if etf_diff > 0
@@ -98,21 +114,28 @@ def main():
         )
 
         msg = (
-            "🚨 Silver ETF Arbitrage Alert (MCX-validated)\n\n"
+            "🚨 Silver ETF Alert (Benchmark-validated)\n\n"
             f"GROWWSLVR: {groww:.2f}\n"
             f"SILVERIETF: {silver_etf:.2f}\n"
             f"ETF Difference: {etf_diff:.2f}\n"
             f"Direction: {direction}\n\n"
-            f"MCX SILVERMIC (27-Feb) ₹/kg: {mcx_kg:.2f}\n"
-            f"MCX/1000 (₹/gm): {mcx_per_gm:.2f}\n"
-            f"GROWW - (MCX/1000): {mcx_diff:.2f}\n"
-            f"MCX Check: |diff| < {MCX_THRESHOLD:.2f}\n\n"
+            f"Benchmark (SI=F * USDINR) ₹/gm: {bench_gm:.2f}\n"
+            f"GROWW ratio: {groww_ratio:.4f}\n"
+            f"SILVER ratio: {silver_ratio:.4f}\n"
+            f"Ratio diff: {ratio_diff:.4f} (must be < {RATIO_THRESHOLD:.4f})\n\n"
             f"⏱ {now}"
         )
 
         send_telegram(msg)
+    else:
+        # Explain why no alert (useful while tuning thresholds)
+        reasons = []
+        if abs(etf_diff) <= THRESHOLD:
+            reasons.append(f"ETF gap not large enough: |{etf_diff:.4f}| <= {THRESHOLD}")
+        if ratio_diff >= RATIO_THRESHOLD:
+            reasons.append(f"Benchmark sanity check failed: {ratio_diff:.4f} >= {RATIO_THRESHOLD}")
+        print("No alert:", " | ".join(reasons))
 
 
 if __name__ == "__main__":
     main()
-```
