@@ -8,7 +8,7 @@ from datetime import datetime
 TICKER_A = "GROWWSLVR.NS"
 TICKER_B = "SILVERIETF.NS"
 
-THRESHOLD = 4.0          # ₹ absolute threshold for ETF-vs-ETF difference
+THRESHOLD = .01          # ₹ absolute threshold for ETF-vs-ETF difference
 RATIO_THRESHOLD = 0.02    # 2% max difference in normalized ratios (benchmark sanity check)
 
 # Benchmark inputs (machine-readable, no JS scraping)
